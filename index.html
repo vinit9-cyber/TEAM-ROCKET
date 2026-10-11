@@ -80,6 +80,12 @@ a{color:var(--green)}
   </select>
 </header>
 
+<section class="panel">
+  <h2 id="howTitle">👣 कसे वापरायचे?</h2>
+  <p id="howText">१. पीक निवडा. २. जिल्हा, प्रमाण आणि वाहतूक खर्च भरा. ३. बाजारांची तुलना करून अंदाजे निव्वळ उत्पन्न पाहा.</p>
+  <p class="small" id="disclaimer">शैक्षणिक साधन. विक्रीपूर्वी अधिकृत बाजारभाव आणि प्रत्यक्ष वाहतूक खर्च तपासा.</p>
+</section>
+
 <section class="hero">
   <div class="small" id="eyebrow">तुमच्या शेतीसाठी सोपी बाजार माहिती</div>
   <h2 id="heroTitle">योग्य बाजार निवडा. मेहनतीचा योग्य मोबदला मिळवा.</h2>
@@ -104,7 +110,7 @@ a{color:var(--green)}
     <button class="crop" data-crop="onion"><span class="emoji">🧅</span><span data-crop-label="onion">कांदा</span></button>
     <button class="crop" data-crop="potato"><span class="emoji">🥔</span><span data-crop-label="potato">बटाटा</span></button>
     <button class="crop" data-crop="grapes"><span class="emoji">🍇</span><span data-crop-label="grapes">द्राक्षे</span></button>
-    <button class="crop" data-crop="pomegranate"><span class="emoji">ザ</span><span data-crop-label="pomegranate">डाळिंब</span></button>
+    <button class="crop" data-crop="pomegranate"><span class="emoji">🍎</span><span data-crop-label="pomegranate">डाळिंब</span></button>
     <button class="crop" data-crop="soybean"><span class="emoji">🌿</span><span data-crop-label="soybean">सोयाबीन</span></button>
   </div>
   <div class="fields">
@@ -154,11 +160,7 @@ a{color:var(--green)}
   <p class="small" id="forecastNote">एका दिवसाच्या भावावरून खात्रीशीर भविष्यवाणी करता येत नाही. ऐतिहासिक भाव उपलब्ध असतील तेव्हाच वास्तविक ट्रेंड मोजता येईल.</p>
 </section>
 
-<section class="panel">
-  <h2 id="howTitle">👣 कसे वापरायचे?</h2>
-  <p id="howText">१. पीक निवडा. २. जिल्हा, प्रमाण आणि वाहतूक खर्च भरा. ३. बाजारांची तुलना करून अंदाजे निव्वळ उत्पन्न पाहा.</p>
-  <p class="small" id="disclaimer">शैक्षणिक साधन. विक्रीपूर्वी अधिकृत बाजारभाव आणि प्रत्यक्ष वाहतूक खर्च तपासा.</p>
-</section>
+
 
 <footer>
   <span id="footerText">डेटा उपलब्धतेनुसार बदलू शकतो.</span>
@@ -363,36 +365,33 @@ function makeRecommendation(markets,qty){
 }
 
 function renderForecast(){
- const host=$("forecastRows");
- const livePrices=currentRecords.map(r=>r.price).filter(n=>n>0);
- if(usingLiveData && livePrices.length){
-   const low=Math.min(...livePrices),high=Math.max(...livePrices);
-   host.innerHTML=`
-     <div class="feature">
-       <div class="small">${escapeHTML(tr("liveOutlook"))} · ${escapeHTML(tr("priceRange"))}</div>
-       <div class="big-price">${money(low)} – ${money(high)}</div>
-       <div class="small">${escapeHTML(tr("perQtl"))}</div>
-     </div>
-     <div class="status">${escapeHTML(tr("historyMissing"))}</div>`;
-   $("forecastNote").textContent=tr("noHistory");
-   return;
- }
-
- const values=demoPrices[selectedCrop];
- const labels=lang==="en"?["Sample day 1","Sample day 2","Sample day 3"]:
-   lang==="hi"?["नमूना दिन १","नमूना दिन २","नमूना दिन ३"]:
-   ["नमुना दिवस १","नमुना दिवस २","नमुना दिवस ३"];
- const max=Math.max(...values);
- host.innerHTML=`
-   <div class="status">${escapeHTML(tr("sampleOutlook"))}</div>
-   ${values.map((v,i)=>`
-     <div class="outlook-row">
-       <div class="small">${escapeHTML(labels[i])}</div>
-       <div class="outlook-bar"><span style="width:${Math.max(5,v/max*100)}%"></span></div>
-       <strong>${money(v)}</strong>
-     </div>`).join("")}
-   <div class="feature"><p class="feature-text">${escapeHTML(tr("noHistory"))}</p></div>`;
- $("forecastNote").textContent=tr("forecastNote");
+  const host=$("forecastRows");
+  const dated=currentRecords.filter(r=>r.price>0 && /^\d{4}-\d{2}-\d{2}$/.test(r.arrival_date||""));
+  if(usingLiveData && dated.length){
+    const byDate=new Map();
+    dated.forEach(r=>{if(!byDate.has(r.arrival_date))byDate.set(r.arrival_date,[]);byDate.get(r.arrival_date).push(r.price);});
+    const series=[...byDate.entries()].map(([date,prices])=>({date,price:prices.reduce((a,b)=>a+b,0)/prices.length})).sort((a,b)=>a.date.localeCompare(b.date)).slice(-7);
+    const fmtDate=date=>new Date(date+"T12:00:00").toLocaleDateString(lang==="en"?"en-IN":lang==="hi"?"hi-IN":"mr-IN",{day:"numeric",month:"short"});
+    const latest=series[series.length-1], previous=series.length>1?series[series.length-2]:null;
+    const change=previous?((latest.price-previous.price)/previous.price)*100:0;
+    let low=latest.price, high=latest.price, direction="";
+    if(series.length>=3){
+      const n=series.length, meanX=(n-1)/2, meanY=series.reduce((a,p)=>a+p.price,0)/n;
+      const denom=series.reduce((a,p,i)=>a+(i-meanX)**2,0);
+      const slope=denom?series.reduce((a,p,i)=>a+(i-meanX)*(p.price-meanY),0)/denom:0;
+      const projected=Math.max(0,latest.price+slope);
+      const spread=Math.max(latest.price*.05,...series.slice(-4).map(p=>Math.abs(p.price-latest.price)),Math.abs(slope)*.75);
+      low=Math.max(0,projected-spread); high=projected+spread;
+      direction=slope>latest.price*.005?(lang==="en"?"Recent trend is rising.":lang==="hi"?"हाल का रुझान बढ़ता हुआ है।":"अलीकडील कल वाढीचा आहे."):slope< -latest.price*.005?(lang==="en"?"Recent trend is falling.":lang==="hi"?"हाल का रुझान घटता हुआ है।":"अलीकडील कल घसरणीचा आहे."):(lang==="en"?"Recent trend is broadly steady.":lang==="hi"?"हाल का रुझान लगभग स्थिर है।":"अलीकडील कल साधारण स्थिर आहे.");
+    }
+    const outlook=series.length>=3?`${direction} ${lang==="en"?"Estimated next-report range":lang==="hi"?"अगली रिपोर्ट का अनुमानित दायरा":"पुढील अहवालासाठी अंदाजे श्रेणी"}: ${money(low)} – ${money(high)} / qtl.`:(lang==="en"?`Only ${series.length} dated report(s) found; at least 3 dates are needed for a trend estimate.`:lang==="hi"?`केवल ${series.length} दिनांकित रिपोर्ट मिलीं; अनुमान के लिए कम से कम 3 तारीखें चाहिए।`:`फक्त ${series.length} दिनांकित अहवाल मिळाले; अंदाजासाठी किमान ३ तारखा आवश्यक आहेत.`);
+    const max=Math.max(...series.map(p=>p.price),1);
+    host.innerHTML=`<div class="feature"><div class="small">${escapeHTML(lang==="en"?"Latest APMC reported average":lang==="hi"?"APMC का नवीनतम दर्ज औसत":"APMC मधील नवीनतम नोंदवलेली सरासरी")} · ${escapeHTML(fmtDate(latest.date))}</div><div class="big-price">${money(latest.price)} <span class="small">/ qtl</span></div><div class="small">${previous?(lang==="en"?"Change from previous report":lang==="hi"?"पिछली रिपोर्ट से बदलाव":"मागील अहवालापासून बदल")+`: ${change>0?"+":""}${change.toFixed(1)}%`:""}</div></div>${series.map(p=>`<div class="outlook-row"><div class="small">${escapeHTML(fmtDate(p.date))}</div><div class="outlook-bar"><span style="width:${Math.max(5,p.price/max*100)}%"></span></div><strong>${money(p.price)}</strong></div>`).join("")}<div class="feature"><h3>${escapeHTML(lang==="en"?"Estimated short-term outlook":lang==="hi"?"अल्पकालिक अनुमान":"अल्पकालीन अंदाज")}</h3><p class="feature-text">${escapeHTML(outlook)}</p><p class="small">${escapeHTML(lang==="en"?"Calculated from dated Pune APMC reports; this is a statistical estimate, not an official forecast. Prices vary by grade, arrivals and market.":lang==="hi"?"पुणे APMC की दिनांकित रिपोर्टों से गणना; यह सांख्यिकीय अनुमान है, आधिकारिक भविष्यवाणी नहीं।":"पुणे APMC च्या दिनांकित अहवालांवरून काढलेला सांख्यिकीय अंदाज; हा अधिकृत अंदाज नाही.")}</p></div>`;
+    $("forecastNote").textContent=(lang==="en"?"Source: Pune APMC Daily Bajarbhav. Latest report: ":lang==="hi"?"स्रोत: पुणे APMC दैनिक बाजारभाव। नवीनतम रिपोर्ट: ":"स्रोत: पुणे APMC दैनिक बाजारभाव. नवीनतम अहवाल: ")+latest.date;
+    return;
+  }
+  host.innerHTML=`<div class="status">${escapeHTML(tr("historyMissing"))}</div><div class="feature"><p class="feature-text">${escapeHTML(lang==="en"?"The API did not return dated APMC prices for this crop. Check the API endpoint or choose a crop with available reports. Demo prices are not used as a forecast.":lang==="hi"?"API ने इस फसल के दिनांकित APMC भाव नहीं लौटाए। API जांचें या ऐसी फसल चुनें जिसकी रिपोर्ट उपलब्ध हो। नमूना भावों से अनुमान नहीं लगाया जाएगा।":"या पिकासाठी API मधून दिनांकित APMC भाव मिळाले नाहीत. API तपासा किंवा अहवाल उपलब्ध असलेले पीक निवडा. नमुना भावांवरून अंदाज दाखवला जाणार नाही.")}</p></div>`;
+  $("forecastNote").textContent=tr("noHistory");
 }
 
 async function renderMarkets(){
