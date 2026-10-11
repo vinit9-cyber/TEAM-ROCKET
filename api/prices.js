@@ -1,5 +1,4 @@
-
-
+```javascript
 const BASE = "https://apmcpune.in";
 const CURRENT_URL = `${BASE}/bajarbhav/daily-public`;
 const SOURCE = "Pune APMC — Daily Bajarbhav";
@@ -13,7 +12,7 @@ const ALIASES = {
   soybean: ["soybean", "soyabean", "सोयाबीन", "सोयाबिन"]
 };
 
-// Include known sections and alternate spellings where applicable.
+// Pune APMC market sections
 const MARKETS = {
   "main-fruit": "Gultekdi — Fruits Market",
   "main-veg": "Gultekdi — Fruit & Vegetable Market",
@@ -52,26 +51,37 @@ function decode(s = "") {
     .replace(/&amp;/g, "&")
     .replace(/&quot;/g, '"')
     .replace(/&#39;/g, "'")
-    .replace(/&#(\d+);/g, (_, n) => String.fromCodePoint(+n))
+    .replace(/&#(\d+);/g, (_, n) =>
+      String.fromCodePoint(+n)
+    )
     .replace(/&#x([\da-f]+);/gi, (_, n) =>
-      String.fromCodePoint(parseInt(n, 16)));
+      String.fromCodePoint(parseInt(n, 16))
+    );
 }
 
 function text(html = "") {
-  return decode(String(html)
-    .replace(/<script\b[\s\S]*?<\/script>/gi, " ")
-    .replace(/<style\b[\s\S]*?<\/style>/gi, " ")
-    .replace(/<(?:br|\/p|\/div|\/li|\/h[1-6]|\/tr|\/td|\/th)\b[^>]*>/gi, "\n")
-    .replace(/<[^>]+>/g, " "))
+  return decode(
+    String(html)
+      .replace(/<script\b[\s\S]*?<\/script>/gi, " ")
+      .replace(/<style\b[\s\S]*?<\/style>/gi, " ")
+      .replace(
+        /<(?:br|\/p|\/div|\/li|\/h[1-6]|\/tr|\/td|\/th)\b[^>]*>/gi,
+        "\n"
+      )
+      .replace(/<[^>]+>/g, " ")
+  )
     .replace(/[ \t\r]+/g, " ")
     .replace(/\n\s+/g, "\n")
     .trim();
 }
 
 function num(value) {
-  const n = Number(String(value || "")
-    .replace(/[₹,\s]/g, "")
-    .replace(/[^\d.-]/g, ""));
+  const n = Number(
+    String(value || "")
+      .replace(/[₹,\s]/g, "")
+      .replace(/[^\d.-]/g, "")
+  );
+
   return Number.isFinite(n) ? n : 0;
 }
 
@@ -79,24 +89,35 @@ async function get(url) {
   const response = await fetch(url, {
     headers: {
       "User-Agent": "FarmerMarketIntelligence/1.2",
-      "Accept": "text/html"
+      Accept: "text/html"
     },
     signal: AbortSignal.timeout(10000)
   });
-  if (!response.ok) throw new Error(`APMC returned ${response.status}`);
+
+  if (!response.ok) {
+    throw new Error(`APMC returned ${response.status}`);
+  }
+
   return response.text();
 }
 
 function reportLinks(html) {
   const found = new Map();
-  const re = /href=["']([^"']*\/bajarbhav\/view-daily-bajarbhav\/[^"']*)["']/gi;
+
+  const re =
+    /href=["']([^"']*\/bajarbhav\/view-daily-bajarbhav\/[^"']*)["']/gi;
 
   for (const match of html.matchAll(re)) {
     try {
       const url = new URL(match[1], BASE);
+
       if (url.hostname !== "apmcpune.in") continue;
+
       const date = url.href.match(/(20\d{2}-\d{2}-\d{2})/);
-      if (date) found.set(date[1], url.href);
+
+      if (date) {
+        found.set(date[1], url.href);
+      }
     } catch {}
   }
 
@@ -107,18 +128,25 @@ function reportLinks(html) {
 
 function parseReport(html, date, url, slug) {
   const records = [];
-  const tables = html.match(/<table\b[\s\S]*?<\/table>/gi) || [];
+  const tables =
+    html.match(/<table\b[\s\S]*?<\/table>/gi) || [];
 
   for (const table of tables) {
-    const rows = table.match(/<tr\b[\s\S]*?<\/tr>/gi) || [];
+    const rows =
+      table.match(/<tr\b[\s\S]*?<\/tr>/gi) || [];
 
     for (const row of rows) {
       const cells = [...row.matchAll(
         /<t[dh]\b[^>]*>([\s\S]*?)<\/t[dh]>/gi
-      )].map(m => text(m[1]).replace(/\n/g, " ").trim());
+      )].map(m =>
+        text(m[1]).replace(/\n/g, " ").trim()
+      );
 
       if (cells.length < 6) continue;
-      if (/शेतमालाचे नाव|commodity/i.test(cells[0])) continue;
+
+      if (/शेतमालाचे नाव|commodity/i.test(cells[0])) {
+        continue;
+      }
 
       const commodity = cells[0];
       const arrival = num(cells[2]);
@@ -126,7 +154,14 @@ function parseReport(html, date, url, slug) {
       const max = num(cells[4]);
       const average = num(cells[5]);
 
-      if (!commodity || min <= 0 || max <= 0 || average <= 0) continue;
+      if (
+        !commodity ||
+        min <= 0 ||
+        max <= 0 ||
+        average <= 0
+      ) {
+        continue;
+      }
 
       records.push({
         commodity,
@@ -150,8 +185,11 @@ function parseReport(html, date, url, slug) {
 
 function matches(record, requested) {
   if (!requested) return true;
+
   const aliases = ALIASES[requested] || [requested];
+
   const name = record.commodity.toLocaleLowerCase("mr-IN");
+
   return aliases.some(alias =>
     name.includes(alias.toLocaleLowerCase("mr-IN"))
   );
@@ -159,6 +197,7 @@ function matches(record, requested) {
 
 function unique(records) {
   const seen = new Set();
+
   return records.filter(record => {
     const key = [
       record.market,
@@ -168,29 +207,42 @@ function unique(records) {
       record.max_price,
       record.modal_price
     ].join("|");
+
     if (seen.has(key)) return false;
+
     seen.add(key);
     return true;
   });
 }
 
 export default async function handler(req, res) {
-  res.setHeader("Cache-Control", "s-maxage=300, stale-while-revalidate=600");
+  res.setHeader(
+    "Cache-Control",
+    "s-maxage=300, stale-while-revalidate=600"
+  );
 
   if (req.method !== "GET") {
     res.setHeader("Allow", "GET");
-    return res.status(405).json({ error: "Method not allowed" });
+
+    return res.status(405).json({
+      error: "Method not allowed"
+    });
   }
 
-  const requested = String(req.query?.commodity || "")
+  const requested = String(
+    req.query?.commodity || ""
+  )
     .trim()
     .toLowerCase();
 
   if (requested && requested.length > 60) {
-    return res.status(400).json({ error: "Invalid commodity filter" });
+    return res.status(400).json({
+      error: "Invalid commodity filter"
+    });
   }
 
   const fetchedAt = new Date().toISOString();
+
   const today = new Intl.DateTimeFormat("en-CA", {
     timeZone: "Asia/Kolkata",
     year: "numeric",
@@ -198,52 +250,90 @@ export default async function handler(req, res) {
     day: "2-digit"
   }).format(new Date());
 
-  const results = await Promise.all(CATEGORIES.map(async slug => {
-    try {
-      const listing = await get(
-        `${BASE}/bajarbhav/daily-bajarbhav-dates/${slug}`
-      );
-      const reports = reportLinks(listing).slice(0, 5);
+  const results = await Promise.all(
+    CATEGORIES.map(async slug => {
+      try {
+        const listing = await get(
+          `${BASE}/bajarbhav/daily-bajarbhav-dates/${slug}`
+        );
 
-      for (const report of reports) {
-        try {
-          const html = await get(report.url);
-          const records = unique(
-            parseReport(html, report.date, report.url, slug)
-          ).filter(record => matches(record, requested));
+        // Scan up to 10 dated reports per market section.
+        const reports = reportLinks(listing).slice(0, 10);
+        const historicalRecords = [];
 
-          if (records.length) {
-            return {
-              report_date: report.date,
-              source_url: report.url,
-              records
-            };
+        for (const report of reports) {
+          try {
+            const reportHtml = await get(report.url);
+
+            const parsed = unique(
+              parseReport(
+                reportHtml,
+                report.date,
+                report.url,
+                slug
+              )
+            ).filter(record =>
+              matches(record, requested)
+            );
+
+            historicalRecords.push(...parsed);
+          } catch {
+            // Continue if an individual report cannot be fetched.
           }
-        } catch {}
+        }
+
+        if (historicalRecords.length) {
+          const latestDate = historicalRecords
+            .map(r => r.arrival_date)
+            .sort()
+            .at(-1);
+
+          return {
+            report_date: latestDate,
+            source_url: historicalRecords[0].source_url,
+            records: historicalRecords
+          };
+        }
+      } catch {
+        // Continue if a market section cannot be fetched.
       }
-    } catch {}
-    return null;
-  }));
+
+      return null;
+    })
+  );
 
   const found = results.filter(Boolean);
-  const records = unique(found.flatMap(item => item.records))
-    .sort((a, b) => a.market.localeCompare(b.market));
 
-  const dates = found.map(item => item.report_date).sort();
+  const records = unique(
+    found.flatMap(item => item.records)
+  ).sort((a, b) =>
+    a.market.localeCompare(b.market)
+  );
+
+  const dates = found
+    .map(item => item.report_date)
+    .sort();
+
   const newestDate = dates[dates.length - 1] || "";
 
   return res.status(200).json({
     source: SOURCE,
     source_url: CURRENT_URL,
-    data_frequency: "Daily market report; not live tick-by-tick prices",
+    data_frequency:
+      "Daily market report; not live tick-by-tick prices",
     fetched_at: fetchedAt,
     report_date: newestDate,
-    used_previous_report: Boolean(newestDate && newestDate < today),
+    used_previous_report: Boolean(
+      newestDate && newestDate < today
+    ),
     count: records.length,
-    markets: [...new Set(records.map(r => r.market))],
+    markets: [
+      ...new Set(records.map(r => r.market))
+    ],
     records,
     message: records.length
       ? ""
       : "No matching prices were found in the scanned Pune APMC reports."
   });
 }
+```
